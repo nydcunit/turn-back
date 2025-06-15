@@ -140,16 +140,23 @@ app.post('/api/video/connect', async (req, res) => {
     peers.set(token, { roomId, userId, streamId });
 
     // Generate response
-    const response = {
-      broadcaster: {
-        url: `ws://${process.env.SERVER_HOST || 'localhost'}:${process.env.PORT || 3000}/socket.io/?token=${token}`,
-        token,
-        ice: generateTurnCredentials(userId)
-      },
-      viewer: {
-        url: `http://${process.env.SERVER_HOST || 'localhost'}:${process.env.PORT || 3000}/stream/${streamId}.m3u8`
-      }
-    };
+    // Updated code:
+const isProduction = process.env.NODE_ENV === 'production' || process.env.SERVER_HOST !== 'localhost';
+const protocol = isProduction ? 'wss' : 'ws';
+const httpProtocol = isProduction ? 'https' : 'http';
+const host = process.env.SERVER_HOST || 'localhost';
+const port = isProduction ? '' : `:${process.env.PORT || 3000}`;
+
+const response = {
+  broadcaster: {
+    url: `${protocol}://${host}${port}/socket.io/?token=${token}`,
+    token,
+    ice: generateTurnCredentials(userId)
+  },
+  viewer: {
+    url: `${httpProtocol}://${host}${port}/stream/${streamId}.m3u8`
+  }
+};
 
     res.json(response);
   } catch (error) {
