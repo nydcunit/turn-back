@@ -212,9 +212,19 @@ io.on('connection', async (socket) => {
   // Handle transport creation
   socket.on('createTransport', async ({ producing, consuming }, callback) => {
     try {
+      console.log(`🔧 Creating transport for ${userId}: producing=${producing}, consuming=${consuming}`);
+      
+      // Ensure callback is defined
+      if (typeof callback !== 'function') {
+        console.error(`❌ No callback provided for transport creation by ${userId}`);
+        return;
+      }
+
       const transport = producing
         ? await createWebRtcTransport(room.router, 'producer')
         : await createWebRtcTransport(room.router, 'consumer');
+
+      console.log(`✅ Transport created: ${transport.id} for ${userId}`);
 
       room.transports.set(transport.id, {
         transport,
@@ -223,15 +233,41 @@ io.on('connection', async (socket) => {
         producing
       });
 
-      callback({
+      console.log(`✅ Transport stored in room. Total transports: ${room.transports.size}`);
+
+      const response = {
         id: transport.id,
         iceParameters: transport.iceParameters,
         iceCandidates: transport.iceCandidates,
         dtlsParameters: transport.dtlsParameters
+      };
+
+      console.log(`📤 Sending transport response to ${userId}: ${transport.id}`);
+      
+      // Use setImmediate to ensure callback is called asynchronously
+      setImmediate(() => {
+        try {
+          callback(response);
+          console.log(`✅ Callback executed successfully for ${userId}`);
+        } catch (callbackError) {
+          console.error(`❌ Error in callback execution for ${userId}:`, callbackError);
+        }
       });
+      
     } catch (error) {
-      console.error('Error creating transport:', error);
-      callback({ error: error.message });
+      console.error(`❌ Error creating transport for ${userId}:`, error);
+      
+      // Ensure callback is called even on error
+      if (typeof callback === 'function') {
+        setImmediate(() => {
+          try {
+            callback({ error: error.message });
+            console.log(`✅ Error callback executed for ${userId}`);
+          } catch (callbackError) {
+            console.error(`❌ Error in error callback execution for ${userId}:`, callbackError);
+          }
+        });
+      }
     }
   });
 
