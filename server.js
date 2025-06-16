@@ -300,36 +300,49 @@ io.on('connection', async (socket) => {
   // Handle consumer creation
   socket.on('consume', async ({ producerId, rtpCapabilities }, callback) => {
     try {
+      console.log(`🎯 Consumer request from ${userId} for producer ${producerId}`);
+      
       const producerInfo = room.producers.get(producerId);
       if (!producerInfo) {
+        console.log(`❌ Producer ${producerId} not found`);
         throw new Error('Producer not found');
       }
+
+      console.log(`✅ Producer found: ${producerId} from ${producerInfo.userId} (${producerInfo.kind})`);
 
       if (!room.router.canConsume({
         producerId,
         rtpCapabilities
       })) {
+        console.log(`❌ Cannot consume producer ${producerId} - RTP capabilities mismatch`);
         throw new Error('Cannot consume');
       }
+
+      console.log(`✅ Router can consume producer ${producerId}`);
 
       // Find or create transport for consumer
       let transport;
       for (const [, transportInfo] of room.transports) {
         if (transportInfo.userId === userId && transportInfo.consuming) {
           transport = transportInfo.transport;
+          console.log(`✅ Found existing consumer transport for ${userId}`);
           break;
         }
       }
 
       if (!transport) {
+        console.log(`❌ No consumer transport found for ${userId}`);
         throw new Error('No consumer transport');
       }
 
+      console.log(`🔄 Creating consumer for producer ${producerId}...`);
       const consumer = await transport.consume({
         producerId,
         rtpCapabilities,
         paused: false
       });
+
+      console.log(`✅ Consumer created: ${consumer.id} for producer ${producerId} (${consumer.kind})`);
 
       room.consumers.set(consumer.id, {
         consumer,
@@ -337,15 +350,40 @@ io.on('connection', async (socket) => {
         producerId
       });
 
-      callback({
+      const response = {
         id: consumer.id,
         producerId,
         kind: consumer.kind,
         rtpParameters: consumer.rtpParameters
+      };
+
+      console.log(`📤 Sending consumer response to ${userId}:`, {
+        id: response.id,
+        producerId: response.producerId,
+        kind: response.kind
       });
+
+      callback(response);
     } catch (error) {
-      console.error('Error creating consumer:', error);
+      console.error(`❌ Error creating consumer for ${userId}:`, error.message);
       callback({ error: error.message });
+    }
+  });
+
+  // Handle refresh producers request
+  socket.on('refresh-producers', () => {
+    console.log(`🔄 ${userId} requested producer refresh`);
+    
+    // Send existing producers again
+    for (const [producerId, producerInfo] of room.producers) {
+      if (producerInfo.userId !== userId) {
+        console.log(`🔄 Re-sending producer ${producerId} from ${producerInfo.userId} to ${userId}`);
+        socket.emit('newProducer', {
+          producerId,
+          userId: producerInfo.userId,
+          kind: producerInfo.kind
+        });
+      }
     }
   });
 
